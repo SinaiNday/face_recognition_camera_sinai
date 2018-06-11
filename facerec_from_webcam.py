@@ -1,5 +1,7 @@
 import face_recognition
 import cv2
+import keras as kr
+import tensorflow as tf
 # ------------------------------------------------------------/
 # Machine Learning face recognition from webcam. by Sinai Nday Kabulo
 # ------------------------------------------------------------/
