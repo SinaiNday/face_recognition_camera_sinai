@@ -1,2 +1,2 @@
-# face_recagnition_camera_sinai
+# face_recognition_camera_sinai
 Our final project in ML,
