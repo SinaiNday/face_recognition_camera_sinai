@@ -45,39 +45,21 @@ MINMAX_TEMPLATE = (TEMPLATE - TPL_MIN) / (TPL_MAX - TPL_MIN)
 
 
 class AlignDlib:
-    """
-    Use `dlib's landmark estimation <http://blog.dlib.net/2014/08/real-time-face-pose-estimation.html>`_ to align faces.
-    The alignment preprocess faces for input into a neural network.
-    Faces are resized to the same size (such as 96x96) and transformed
-    to make landmarks (such as the eyes and nose) appear at the same
-    location on every image.
-    Normalized landmarks:
-    .. image:: ../images/dlib-landmark-mean.png
-    """
+ 
 
     #: Landmark indices.
     INNER_EYES_AND_BOTTOM_LIP = [39, 42, 57]
     OUTER_EYES_AND_NOSE = [36, 45, 33]
 
     def __init__(self, facePredictor):
-        """
-        Instantiate an 'AlignDlib' object.
-        :param facePredictor: The path to dlib's
-        :type facePredictor: str
-        """
+        
         assert facePredictor is not None
 
         self.detector = dlib.get_frontal_face_detector()
         self.predictor = dlib.shape_predictor(facePredictor)
 
     def getAllFaceBoundingBoxes(self, rgbImg):
-        """
-        Find all face bounding boxes in an image.
-        :param rgbImg: RGB image to process. Shape: (height, width, 3)
-        :type rgbImg: numpy.ndarray
-        :return: All face bounding boxes in an image.
-        :rtype: dlib.rectangles
-        """
+     
         assert rgbImg is not None
 
         try:
@@ -88,15 +70,7 @@ class AlignDlib:
             return []
 
     def getLargestFaceBoundingBox(self, rgbImg, skipMulti=False):
-        """
-        Find the largest face bounding box in an image.
-        :param rgbImg: RGB image to process. Shape: (height, width, 3)
-        :type rgbImg: numpy.ndarray
-        :param skipMulti: Skip image if more than one face detected.
-        :type skipMulti: bool
-        :return: The largest face bounding box in an image, or None.
-        :rtype: dlib.rectangle
-        """
+       
         assert rgbImg is not None
 
         faces = self.getAllFaceBoundingBoxes(rgbImg)
@@ -106,15 +80,7 @@ class AlignDlib:
             return None
 
     def findLandmarks(self, rgbImg, bb):
-        """
-        Find the landmarks of a face.
-        :param rgbImg: RGB image to process. Shape: (height, width, 3)
-        :type rgbImg: numpy.ndarray
-        :param bb: Bounding box around the face to find landmarks for.
-        :type bb: dlib.rectangle
-        :return: Detected landmark locations.
-        :rtype: list of (x,y) tuples
-        """
+       
         assert rgbImg is not None
         assert bb is not None
 
@@ -124,25 +90,7 @@ class AlignDlib:
     def align(self, imgDim, rgbImg, bb=None,
               landmarks=None, landmarkIndices=INNER_EYES_AND_BOTTOM_LIP,
               skipMulti=False):
-        r"""align(imgDim, rgbImg, bb=None, landmarks=None, landmarkIndices=INNER_EYES_AND_BOTTOM_LIP)
-        Transform and align a face in an image.
-        :param imgDim: The edge length in pixels of the square the image is resized to.
-        :type imgDim: int
-        :param rgbImg: RGB image to process. Shape: (height, width, 3)
-        :type rgbImg: numpy.ndarray
-        :param bb: Bounding box around the face to align. \
-                   Defaults to the largest face.
-        :type bb: dlib.rectangle
-        :param landmarks: Detected landmark locations. \
-                          Landmarks found on `bb` if not provided.
-        :type landmarks: list of (x,y) tuples
-        :param landmarkIndices: The indices to transform to.
-        :type landmarkIndices: list of ints
-        :param skipMulti: Skip image if more than one face detected.
-        :type skipMulti: bool
-        :return: The aligned RGB image. Shape: (imgDim, imgDim, 3)
-        :rtype: numpy.ndarray
-        """
+       
         assert imgDim is not None
         assert rgbImg is not None
         assert landmarkIndices is not None
