@@ -23,4 +23,4 @@ def load_metadata(path):
             metadata.append(IdentityMetadata(path, i, f))
     return np.array(metadata)
 
-metadata = load_metadata('Sinai_images')
+metadata = load_metadata('Sinai_Images')
