@@ -1,153 +1,155 @@
-"""
-This is an example of using the k-nearest-neighbors(knn) algorithm for face recognition.
+import tensorflow as tf
+import numpy as np
+import os
 
-When should I use this example?
-This example is useful when you whish to recognize a large set of known people,
-and make a prediction for an unkown person in a feasible computation time.
+from numpy import genfromtxt
+from keras.layers import Conv2D, ZeroPadding2D, Activation
+from keras.layers.normalization import BatchNormalization
 
-Algorithm Description:
-The knn classifier is first trained on a set of labeled(known) faces, and can then predict the person
-in an unkown image by finding the k most similar faces(images with closet face-features under eucledian distance) in its training set,
-and performing a majority vote(possibly weighted) on their label.
-For example, if k=3, and the three closest face images to the given image in the training set are one image of Biden and two images of Obama, 
-The result would be 'Obama'.
-*This implemententation uses a weighted vote, such that the votes of closer-neighbors are weighted more heavily.
+_FLOATX = 'float32'
 
-Usage:
--First, prepare a set of images of the known people you want to recognize.
- Organize the images in a single directory with a sub-directory for each known person.
--Then, call the 'train' function with the appropriate parameters.
- make sure to pass in the 'model_save_path' if you want to re-use the model without having to re-train it. 
--After training the model, you can call 'predict' to recognize the person in an unknown image.
+def variable(value, dtype=_FLOATX, name=None):
+  v = tf.Variable(np.asarray(value, dtype=dtype), name=name)
+  _get_session().run(v.initializer)
+  return v
 
-NOTE: This example requires scikit-learn to be installed! You can install it with pip:
-$ pip3 install scikit-learn
-"""
+def shape(x):
+  return x.get_shape()
 
-from math import sqrt
-from sklearn import neighbors
-from os import listdir
-from os.path import isdir, join, isfile, splitext
-import pickle
-from PIL import Image, ImageFont, ImageDraw, ImageEnhance
-import face_recognition
-from face_recognition import face_locations
-from face_recognition.cli import image_files_in_folder
+def square(x):
+  return tf.square(x)
 
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
+def zeros(shape, dtype=_FLOATX, name=None):
+  return variable(np.zeros(shape), dtype, name)
 
-def train(train_dir, model_save_path = "", n_neighbors = None, knn_algo = 'ball_tree', verbose=False):
-    """
-    Trains a k-nearest neighbors classifier for face recognition.
+def concatenate(tensors, axis=-1):
+  if axis < 0:
+      axis = axis % len(tensors[0].get_shape())
+  return tf.concat(axis, tensors)
 
-    :param train_dir: directory that contains a sub-directory for each known person, with its name.
+def LRN2D(x):
+  return tf.nn.lrn(x, alpha=1e-4, beta=0.75)
 
-     (View in source code to see train_dir example tree structure)
+def conv2d_bn(
+  x,
+  layer=None,
+  cv1_out=None,
+  cv1_filter=(1, 1),
+  cv1_strides=(1, 1),
+  cv2_out=None,
+  cv2_filter=(3, 3),
+  cv2_strides=(1, 1),
+  padding=None,
+):
+  num = '' if cv2_out == None else '1'
+  tensor = Conv2D(cv1_out, cv1_filter, strides=cv1_strides, name=layer+'_conv'+num)(x)
+  tensor = BatchNormalization(axis=3, epsilon=0.00001, name=layer+'_bn'+num)(tensor)
+  tensor = Activation('relu')(tensor)
+  if padding == None:
+    return tensor
+  tensor = ZeroPadding2D(padding=padding)(tensor)
+  if cv2_out == None:
+    return tensor
+  tensor = Conv2D(cv2_out, cv2_filter, strides=cv2_strides, name=layer+'_conv'+'2')(tensor)
+  tensor = BatchNormalization(axis=3, epsilon=0.00001, name=layer+'_bn'+'2')(tensor)
+  tensor = Activation('relu')(tensor)
+  return tensor
 
-     Structure:
-        <train_dir>/
-        ├── <person1>/
-        │   ├── <somename1>.jpeg
-        │   ├── <somename2>.jpeg
-        │   ├── ...
-        ├── <person2>/
-        │   ├── <somename1>.jpeg
-        │   └── <somename2>.jpeg
-        └── ...
-    :param model_save_path: (optional) path to save model of disk
-    :param n_neighbors: (optional) number of neighbors to weigh in classification. Chosen automatically if not specified.
-    :param knn_algo: (optional) underlying data structure to support knn.default is ball_tree
-    :param verbose: verbosity of training
-    :return: returns knn classifier that was trained on the given data.
-    """
-    X = []
-    y = []
-    for class_dir in listdir(train_dir):
-        if not isdir(join(train_dir, class_dir)):
-            continue
-        for img_path in image_files_in_folder(join(train_dir, class_dir)):
-            image = face_recognition.load_image_file(img_path)
-            faces_bboxes = face_locations(image)
-            if len(faces_bboxes) != 1:
-                if verbose:
-                    print("image {} not fit for training: {}".format(img_path, "didn't find a face" if len(faces_bboxes) < 1 else "found more than one face"))
-                continue
-            X.append(face_recognition.face_encodings(image, known_face_locations=faces_bboxes)[0])
-            y.append(class_dir)
+weights = [
+  'conv1', 'bn1', 'conv2', 'bn2', 'conv3', 'bn3',
+  'inception_3a_1x1_conv', 'inception_3a_1x1_bn',
+  'inception_3a_pool_conv', 'inception_3a_pool_bn',
+  'inception_3a_5x5_conv1', 'inception_3a_5x5_conv2', 'inception_3a_5x5_bn1', 'inception_3a_5x5_bn2',
+  'inception_3a_3x3_conv1', 'inception_3a_3x3_conv2', 'inception_3a_3x3_bn1', 'inception_3a_3x3_bn2',
+  'inception_3b_3x3_conv1', 'inception_3b_3x3_conv2', 'inception_3b_3x3_bn1', 'inception_3b_3x3_bn2',
+  'inception_3b_5x5_conv1', 'inception_3b_5x5_conv2', 'inception_3b_5x5_bn1', 'inception_3b_5x5_bn2',
+  'inception_3b_pool_conv', 'inception_3b_pool_bn',
+  'inception_3b_1x1_conv', 'inception_3b_1x1_bn',
+  'inception_3c_3x3_conv1', 'inception_3c_3x3_conv2', 'inception_3c_3x3_bn1', 'inception_3c_3x3_bn2',
+  'inception_3c_5x5_conv1', 'inception_3c_5x5_conv2', 'inception_3c_5x5_bn1', 'inception_3c_5x5_bn2',
+  'inception_4a_3x3_conv1', 'inception_4a_3x3_conv2', 'inception_4a_3x3_bn1', 'inception_4a_3x3_bn2',
+  'inception_4a_5x5_conv1', 'inception_4a_5x5_conv2', 'inception_4a_5x5_bn1', 'inception_4a_5x5_bn2',
+  'inception_4a_pool_conv', 'inception_4a_pool_bn',
+  'inception_4a_1x1_conv', 'inception_4a_1x1_bn',
+  'inception_4e_3x3_conv1', 'inception_4e_3x3_conv2', 'inception_4e_3x3_bn1', 'inception_4e_3x3_bn2',
+  'inception_4e_5x5_conv1', 'inception_4e_5x5_conv2', 'inception_4e_5x5_bn1', 'inception_4e_5x5_bn2',
+  'inception_5a_3x3_conv1', 'inception_5a_3x3_conv2', 'inception_5a_3x3_bn1', 'inception_5a_3x3_bn2',
+  'inception_5a_pool_conv', 'inception_5a_pool_bn',
+  'inception_5a_1x1_conv', 'inception_5a_1x1_bn',
+  'inception_5b_3x3_conv1', 'inception_5b_3x3_conv2', 'inception_5b_3x3_bn1', 'inception_5b_3x3_bn2',
+  'inception_5b_pool_conv', 'inception_5b_pool_bn',
+  'inception_5b_1x1_conv', 'inception_5b_1x1_bn',
+  'dense_layer'
+]
 
+conv_shape = {
+  'conv1': [64, 3, 7, 7],
+  'conv2': [64, 64, 1, 1],
+  'conv3': [192, 64, 3, 3],
+  'inception_3a_1x1_conv': [64, 192, 1, 1],
+  'inception_3a_pool_conv': [32, 192, 1, 1],
+  'inception_3a_5x5_conv1': [16, 192, 1, 1],
+  'inception_3a_5x5_conv2': [32, 16, 5, 5],
+  'inception_3a_3x3_conv1': [96, 192, 1, 1],
+  'inception_3a_3x3_conv2': [128, 96, 3, 3],
+  'inception_3b_3x3_conv1': [96, 256, 1, 1],
+  'inception_3b_3x3_conv2': [128, 96, 3, 3],
+  'inception_3b_5x5_conv1': [32, 256, 1, 1],
+  'inception_3b_5x5_conv2': [64, 32, 5, 5],
+  'inception_3b_pool_conv': [64, 256, 1, 1],
+  'inception_3b_1x1_conv': [64, 256, 1, 1],
+  'inception_3c_3x3_conv1': [128, 320, 1, 1],
+  'inception_3c_3x3_conv2': [256, 128, 3, 3],
+  'inception_3c_5x5_conv1': [32, 320, 1, 1],
+  'inception_3c_5x5_conv2': [64, 32, 5, 5],
+  'inception_4a_3x3_conv1': [96, 640, 1, 1],
+  'inception_4a_3x3_conv2': [192, 96, 3, 3],
+  'inception_4a_5x5_conv1': [32, 640, 1, 1,],
+  'inception_4a_5x5_conv2': [64, 32, 5, 5],
+  'inception_4a_pool_conv': [128, 640, 1, 1],
+  'inception_4a_1x1_conv': [256, 640, 1, 1],
+  'inception_4e_3x3_conv1': [160, 640, 1, 1],
+  'inception_4e_3x3_conv2': [256, 160, 3, 3],
+  'inception_4e_5x5_conv1': [64, 640, 1, 1],
+  'inception_4e_5x5_conv2': [128, 64, 5, 5],
+  'inception_5a_3x3_conv1': [96, 1024, 1, 1],
+  'inception_5a_3x3_conv2': [384, 96, 3, 3],
+  'inception_5a_pool_conv': [96, 1024, 1, 1],
+  'inception_5a_1x1_conv': [256, 1024, 1, 1],
+  'inception_5b_3x3_conv1': [96, 736, 1, 1],
+  'inception_5b_3x3_conv2': [384, 96, 3, 3],
+  'inception_5b_pool_conv': [96, 736, 1, 1],
+  'inception_5b_1x1_conv': [256, 736, 1, 1],
+}
 
-    if n_neighbors is None:
-        n_neighbors = int(round(sqrt(len(X))))
-        if verbose:
-            print("Chose n_neighbors automatically as:", n_neighbors)
+def load_weights():
+  weightsDir = './weights'
+  fileNames = filter(lambda f: not f.startswith('.'), os.listdir(weightsDir))
+  paths = {}
+  weights_dict = {}
 
-    knn_clf = neighbors.KNeighborsClassifier(n_neighbors=n_neighbors, algorithm=knn_algo, weights='distance')
-    knn_clf.fit(X, y)
+  for n in fileNames:
+    paths[n.replace('.csv', '')] = weightsDir + '/' + n
 
-    if model_save_path != "":
-        with open(model_save_path, 'wb') as f:
-            pickle.dump(knn_clf, f)
-    return knn_clf
+  for name in weights:
+    if 'conv' in name:
+      conv_w = genfromtxt(paths[name + '_w'], delimiter=',', dtype=None)
+      conv_w = np.reshape(conv_w, conv_shape[name])
+      conv_w = np.transpose(conv_w, (2, 3, 1, 0))
+      conv_b = genfromtxt(paths[name + '_b'], delimiter=',', dtype=None)
+      weights_dict[name] = [conv_w, conv_b]     
+    elif 'bn' in name:
+      bn_w = genfromtxt(paths[name + '_w'], delimiter=',', dtype=None)
+      bn_b = genfromtxt(paths[name + '_b'], delimiter=',', dtype=None)
+      bn_m = genfromtxt(paths[name + '_m'], delimiter=',', dtype=None)
+      bn_v = genfromtxt(paths[name + '_v'], delimiter=',', dtype=None)
+      weights_dict[name] = [bn_w, bn_b, bn_m, bn_v]
+    elif 'dense' in name:
+      dense_w = genfromtxt(weightsDir+'/dense_w.csv', delimiter=',', dtype=None)
+      dense_w = np.reshape(dense_w, (128, 736))
+      dense_w = np.transpose(dense_w, (1, 0))
+      dense_b = genfromtxt(weightsDir+'/dense_b.csv', delimiter=',', dtype=None)
+      weights_dict[name] = [dense_w, dense_b]
 
-def predict(X_img_path, knn_clf = None, model_save_path ="", DIST_THRESH = .5):
-    """
-    recognizes faces in given image, based on a trained knn classifier
-
-    :param X_img_path: path to image to be recognized
-    :param knn_clf: (optional) a knn classifier object. if not specified, model_save_path must be specified.
-    :param model_save_path: (optional) path to a pickled knn classifier. if not specified, model_save_path must be knn_clf.
-    :param DIST_THRESH: (optional) distance threshold in knn classification. the larger it is, the more chance of misclassifying an unknown person to a known one.
-    :return: a list of names and face locations for the recognized faces in the image: [(name, bounding box), ...].
-        For faces of unrecognized persons, the name 'N/A' will be passed.
-    """
-
-    if not isfile(X_img_path) or splitext(X_img_path)[1][1:] not in ALLOWED_EXTENSIONS:
-        raise Exception("invalid image path: {}".format(X_img_path))
-
-    if knn_clf is None and model_save_path == "":
-        raise Exception("must supply knn classifier either thourgh knn_clf or model_save_path")
-
-    if knn_clf is None:
-        with open(model_save_path, 'rb') as f:
-            knn_clf = pickle.load(f)
-
-    X_img = face_recognition.load_image_file(X_img_path)
-    X_faces_loc = face_locations(X_img)
-    if len(X_faces_loc) == 0:
-        return []
-
-    faces_encodings = face_recognition.face_encodings(X_img, known_face_locations=X_faces_loc)
-
-
-    closest_distances = knn_clf.kneighbors(faces_encodings, n_neighbors=1)
-
-    is_recognized = [closest_distances[0][i][0] <= DIST_THRESH for i in range(len(X_faces_loc))]
-
-    # predict classes and cull classifications that are not with high confidence
-    return [(pred, loc) if rec else ("N/A", loc) for pred, loc, rec in zip(knn_clf.predict(faces_encodings), X_faces_loc, is_recognized)]
-
-def draw_preds(img_path, preds):
-    """
-    shows the face recognition results visually.
-
-    :param img_path: path to image to be recognized
-    :param preds: results of the predict function
-    :return:
-    """
-    source_img = Image.open(img_path).convert("RGBA")
-    draw = ImageDraw.Draw(source_img)
-    for pred in preds:
-        loc = pred[1]
-        name = pred[0]
-        # (top, right, bottom, left) => (left,top,right,bottom)
-        draw.rectangle(((loc[3], loc[0]), (loc[1],loc[2])), outline="red")
-        draw.text((loc[3], loc[0] - 30), name, font=ImageFont.truetype('Pillow/Tests/fonts/FreeMono.ttf', 30))
-    source_img.show()
-
-if __name__ == "__main__":
-    knn_clf = train("knn_examples/train")
-    for img_path in listdir("knn_examples/test"):
-        preds = predict(join("knn_examples/test", img_path) ,knn_clf=knn_clf)
-        print(preds)
-        draw_preds(join("knn_examples/test", img_path), preds)
+  return weights_dict
 
